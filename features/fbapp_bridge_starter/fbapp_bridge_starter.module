@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the FBApp Bridge Starter feature.
+ */
+
+include_once 'fbapp_bridge_starter.features.inc';

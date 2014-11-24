@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the FbApp Bridge Config feature.
+ */
+
+include_once 'fbapp_bridge_config.features.inc';

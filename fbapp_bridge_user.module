@@ -1,0 +1,376 @@
+<?php
+/** @file */
+
+/**
+ * @todo Find out how to assign roles to users dynamically based on the 
+ *    facebook app he/she is currently accessing. Updating "users_roles" is not the solution.
+ */
+define('FBAPP_BRIDGE_USERS_TBL', 'fbapp_bridge_users');
+define('FBAPP_BRIDGE_USERS_DATA_TBL', 'fbapp_bridge_users_data');
+
+/**
+ * Indicates that user has authorized the app.
+ */
+define("HAS_AUTHORIZED_APP", 1);
+/**
+ * Indicates that user has not authorized the app.
+ */
+define("NOT_AUTHORIZED_APP", 0);
+
+/**
+ * Implements hook_boot().
+ * Assigning roles to the logged in drupal user.
+ * Note: Be watchful when managing roles for multiple facebook apps on the same drupal instance.
+ *
+ * @see fbapp_bridge_fbuser_reassign_roles()
+ */
+function fbapp_bridge_user_boot() {
+	//print arg(0)."/".arg(1)."/".arg(2)."/".arg(3)."/".arg(4); die();
+	if(is_fbapp_bridge_app_launch_page()) { 
+		//re-assigning roles only if this is fbapp-bridge end user display page.
+		fbapp_bridge_fbuser_reassign_roles();
+	}
+}
+
+/**
+ * Implements hook_menu().
+ */
+function fbapp_bridge_user_menu() {
+	$items = array();
+	$items["fbapp-bridge-user/logout"] = array(
+		'title'             => "Logout facebook user",
+		'page callback'     => 'fbapp_bridge_fbuser_logout',
+		'access callback'   => 'fbapp_bridge_fbuser_access',
+		'access arguments' => array('user logout'),
+		'type' => MENU_NORMAL_ITEM
+  	);
+	$items["fbapp-bridge-user/authorized-app/%"] = array(
+		'title'             => "Authorized app",
+		'page callback'     => 'fbapp_bridge_fbuser_authorized_app',
+		'page arguments' 	=> array(2),		
+		'access callback'   => 'fbapp_bridge_fbuser_access',
+		'access arguments' => array('user logout'),
+		'type' => MENU_NORMAL_ITEM
+  	);
+	$items["fbapp-bridge-user/unauthorized-app/%"] = array(
+		'title'             => "Un-authorized app",
+		'page callback'     => 'fbapp_bridge_fbuser_unauthorized_app',
+		'page arguments' 	=> array(2),
+		'access callback'   => 'fbapp_bridge_fbuser_access',
+		'access arguments' => array('user logout'),
+		'type' => MENU_NORMAL_ITEM
+  	);  	
+  	return $items;
+}
+
+/**
+ * Implements hook_user_load().
+ * @param array $users Associative array with keys as uid and values as objects.
+ */
+function fbapp_bridge_user_user_load($users) {
+	$result = db_query('SELECT uid FROM {'.FBAPP_BRIDGE_USERS_TBL.'} WHERE uid IN (:uids)', array(':uids' => array_keys($users)));
+	foreach ($result as $record) {
+		$users[$record->uid]->is_fbuser = 1;
+	}
+}
+
+/**
+ * Implements hook_user_insert().
+ * Inserts a record in FBAPP_BRIDGE_USERS_TBL.
+ *
+ * @param object &$edit
+ * @param object $account
+ * @param object $category
+ *
+ * @see is_fbapp_bridge_app_launch_page()
+ */
+function fbapp_bridge_user_user_insert(&$edit, $account, $category) {
+	if(is_fbapp_bridge_app_launch_page()) {
+		$fbapp_bridge_rec_id = arg(2);
+		$username = $account->name;
+		
+		if(preg_match("/@facebook/i", $username)) {			
+			//store the fbid - uid association in the table.
+			$fbid = explode("@", $username);
+			$data = array(
+				"fbapp_bridge_rec_id" => $fbapp_bridge_rec_id,
+				"uid" => $account->uid,
+				"user_fbid" => $fbid[0],
+				"has_authorized_app" => HAS_AUTHORIZED_APP,
+				"created" => time()
+			);
+			drupal_write_record(FBAPP_BRIDGE_USERS_TBL, $data);
+		}
+	}
+}
+
+/**
+ * Handler for URL: "fbapp-bridge-user/logout"
+ * Takes care of logging user out of the application.
+ */
+function fbapp_bridge_fbuser_logout() {
+	global $user;
+	
+	//code from user_logout() method. Didn't want to redirect the uer to home. Hence, this wrapper.
+  	watchdog('user', 'Session closed for %name.', array('%name' => $user->name));
+  	module_invoke_all('user_logout', $user);
+  	// Destroy the current session, and reset $user to the anonymous user.
+  	session_destroy();
+
+  	unset($_SESSION["fbuser_roles"]);
+  	
+	return "You have been successfully logged out!";
+}
+
+/**
+ * @return boolean $flag
+ *   Whether the user is a facebook user or not. true if the user is a facebook user.
+ */
+function fbapp_bridge_fbuser_access($action) {
+	global $user;
+			
+	if($action == "user logout") {
+		if($user->uid != 0) {
+			return TRUE;	
+		}
+	}	
+	return FALSE;
+}
+
+/**
+ * Sets the corresponding user role in the database
+ * @todo Set has_authorized_app column value to 1. - DONE
+ */
+function fbapp_bridge_fbuser_authorized_app($fbapp_bridge_rec_id) {
+	global $user;
+	$u = user_load($user->uid);
+	if($u->is_fbuser == 1) {
+		$data = array("has_authorized_app" => HAS_AUTHORIZED_APP);
+		$num_updated = db_update(FBAPP_BRIDGE_USERS_TBL)->fields($data)->condition('fbapp_bridge_rec_id', $fbapp_bridge_rec_id, '=')->condition("uid", $user->uid)->execute();
+	}	
+}
+
+/**
+ * Sets the anonymous Role when user unauthorizes the app.
+ * @param int $fbapp_bridge_rec_id 
+ *   primary id of the FBAPP_BRIDGE table
+ * @todo Set has_authorized_app column to 0 - DONE
+ */
+function fbapp_bridge_fbuser_unauthorized_app($fbapp_bridge_rec_id) {
+	global $user;
+	$u = user_load($user->uid);	
+	if($u->is_fbuser == 1) {
+		$data = array("has_authorized_app" => NOT_AUTHORIZED_APP);
+		$num_updated = db_update(FBAPP_BRIDGE_USERS_TBL)->fields($data)->condition('fbapp_bridge_rec_id', $fbapp_bridge_rec_id, '=')->condition("uid", $user->uid)->execute();		
+	}
+}
+
+/**
+ * Implements custom hook, hook_init_fbuser().
+ * @todo Return the fbuser data specific to fbapp_bridge to the function invoking the hook. Also, return the login/logout URL.
+ *   Check whether user has authorized the facebook app.
+ *   Check whether user has authorized the facebook app. If yes, else assign the unauthorized_rid. 
+ * @todo The following details should be captured on facebook app configuration page.
+ *   You might want to redirect the user to fb login, if not logged in to facebook.
+ *   You might want to do nothing, if the fbuser is not logged in to facebook.
+ * @return array $module_data 
+     Contents of the array. (string $fbuser_login_url, string fbuser_fbid, boolean fbuser_has_authorized_app).
+ */
+function fbapp_bridge_init_fbuser($data) {
+	global $user;
+	$config = $data["config"];
+	$fb = $data["fb"];
+	$fbid = 0;
+	try {
+		$fbid = FbappBridge::getFbUserFbid();
+	} catch(FacebookApiException $e) {
+		if($config["debug"] == 1) {
+			drupal_set_message($e->getMessage(), "error");
+		}
+	}
+
+	$warning_message = "";
+	$module_data = array();
+
+	//print $fbid; 
+	if($fbid == 0) { //facebook user is not logged in
+		//print_r($user);
+		if($user->uid == 0) { //drupal user is not logged in
+			$module_data["fbuser_login_url"] = FbappBridge::getFbLoginUrl();
+			$warning_message = "Facebook UID: ".$fbid.", Drupal UID: 0 ";
+		} else { //drupal user is logged in
+			//If user is logged in facebook; has not authorized app; logged in drupal.
+			//If user is not logged in facebook; logged in drupal.
+			$module_data["fbuser_login_url"] = FbappBridge::getFbLoginUrl();
+			$warning_message = "Facebook UID: ".$fbid.", Drupal UID: ".$user->uid;
+		}
+	} else {
+		//facebook user is logged in and is stored in the current session.
+		try {
+			$r = $fb->api("/me"); //print "<pre>"; print_r($r); print "</pre>";
+			$username = $fbid."@facebook"; 
+			$module_data["fbuser_fbid"] = $fbid;
+			$module_data["fbuser_profile_pic"] = FbappBridge::getFbUserProfilePicUrl($fbid);
+			$module_data["fbuser_name"] = $r["name"];
+			$module_data["fbuser_fb"] = $r;
+			$module_data["fbuser_has_authorized_app"] = 1;		
+			$module_data["fbuser_email"] = $r["email"];
+			$module_data["fbuser_gender"] = $r["gender"];
+		} catch(FacebookApiException $e) {
+			//The facebook user might be logged in, but may not have a valid token to query using the api().
+			//This try-catch captures that exception.
+			if($config["debug"] == 1) {
+				drupal_set_message($e->getMessage(), "error");
+			}
+			
+			$dest = drupal_get_destination();
+			drupal_goto(url($dest["destination"]));
+		}		
+		
+		if($user->uid == 0) { //drupal user is not logged in
+			//$_GET['destination'] = $_GET['q'];			
+			$module = "fbapp_bridge_user";
+			user_external_login_register($username, $module); //invoke this function to initialize drupal session programatically.
+			$warning_message = "Facebook UID: ".$fbid.", Drupal UID: ".$user->uid." (assigned a UID)";
+			
+			fbapp_bridge_fbuser_reassign_roles();
+		} else { //drupal user is logged in
+			//session already exists. associate facebook user with drupal user if not already done before.
+			//user role also might have been assigned by now.
+			$user_bridge = fbapp_bridge_fbuser_load($config["rec_id"], $fbid);
+			if($user_bridge == FALSE) {
+				$data = array(
+					"fbapp_bridge_rec_id" => $config["rec_id"],
+					"uid" => $user->uid,
+					"user_fbid" => $fbid,
+					"has_authorized_app" => HAS_AUTHORIZED_APP,
+					"created" => time()
+				);
+				drupal_write_record(FBAPP_BRIDGE_USERS_TBL, $data);				
+				$warning_message = "Facebook UID: ".$fbid.", Drupal UID: ".$user->uid;
+			} else {
+				//if an association already exists, make sure the usernames match
+				if($user->name != $username) {
+					//The facebook user is associated with a different drupal user. Hence, initiae session for that Drupal User. 
+					//This happens when the same User has authorized more than one Apps on the same Drupal instance.
+					//drupal_set_message("Cannot link Facebook User (". $module_data["fbuser_fbid"].": ".$module_data["fbuser_name"] .") with the currently logged in Drupal User ID (". $user->name ."), since the Drupal User is associated with a different Facebook User ID. Logout from drupal and reload the Canvas Application.", "error");
+					$module = "fbapp_bridge_user";
+					user_external_login_register($username, $module); //invoke this function to initialize drupal session programatically.
+					$warning_message = "Facebook UID: ".$fbid.", Drupal UID: ".$user->uid." (assigned a UID)";
+			
+					fbapp_bridge_fbuser_reassign_roles();
+				} else {			
+					$module_data["fbuser_has_authorized_app"] = $user_bridge["has_authorized_app"];
+					$warning_message = "Facebook User:{$fbid} and Drupal User:{$user->uid} are linked.";
+				}
+			}
+			
+			$user_bridge_data_rec = fbapp_bridge_fbuser_data_load($fbid);
+			if($user_bridge_data_rec == FALSE) {
+				$user_data = array(
+					"fbud_user_fbid" => $fbid,
+					"fbud_hometown" => "",
+					"fbud_gender" => $module_data["fbuser_gender"],
+					"fbud_email" => $module_data["fbuser_email"],
+					"created" => time(),
+					"changed" => time()
+				);
+				drupal_write_record(FBAPP_BRIDGE_USERS_DATA_TBL, $user_data);
+			}
+		}
+	}
+		
+	if($config["debug"] == 1) {
+		drupal_set_message($warning_message, "warning");
+	}
+	
+	return $module_data;
+}
+
+/**
+ * @param int $fbapp_bridge_rec_id
+ *   DB record ID.
+ * @param string $fbid
+ *   Facebook ID of the user. 
+ * @return array/bool $app_rec
+ *   An associate containing details about the application. FALSE otherwise.
+ */
+function fbapp_bridge_fbuser_load($fbapp_bridge_rec_id, $fbid) {
+	$app_rec = db_select(FBAPP_BRIDGE_USERS_TBL, 'c')->fields('c')->condition('fbapp_bridge_rec_id', $fbapp_bridge_rec_id, '=')->condition('user_fbid', $fbid, '=')->execute()->fetchAssoc();
+	if(isset($app_rec["rec_id"])) {
+		return $app_rec;
+	} else {
+		return FALSE;
+	}
+}
+
+function fbapp_bridge_fbuser_data_load($fbid) {
+	$app_rec = db_select(FBAPP_BRIDGE_USERS_DATA_TBL, 'c')->fields('c')->condition('fbud_user_fbid', $fbid, '=')->execute()->fetchAssoc();
+	if(isset($app_rec["fbud_id"])) {
+		return $app_rec;
+	} else {
+		return FALSE;
+	}
+}
+
+/**
+ * Loads application data by user id.
+ * @param int $fbapp_bridge_rec_id
+ * @param int $uid 
+ * @return array $app_rec
+ *   FALSE is no $app_rec is found.
+ */
+function fbapp_bridge_fbuser_load_by_uid($fbapp_bridge_rec_id, $uid) {
+	$app_rec = array();
+	if(!isset($GLOBALS["fbapp_bridge_fbuser_{$fbapp_bridge_rec_id}_{$uid}"])) {
+		$app_rec = db_select(FBAPP_BRIDGE_USERS_TBL, 'c')->fields('c')->condition('fbapp_bridge_rec_id', $fbapp_bridge_rec_id, '=')->condition('uid', $uid, '=')->execute()->fetchAssoc();
+		if(isset($app_rec["rec_id"])) {
+			$GLOBALS["fbapp_bridge_fbuser_{$fbapp_bridge_rec_id}_{$uid}"] = $app_rec;
+		}
+	} else {
+		$app_rec = $GLOBALS["fbapp_bridge_fbuser_{$fbapp_bridge_rec_id}_{$uid}"];
+	}
+	
+	if(isset($app_rec["rec_id"])) {
+		return $app_rec;
+	} else {
+		return FALSE;
+	}
+}
+
+/**
+ * Re-assigns roles to a user. This is required when the user has given permission to an app on a drupal instance,
+ *   but has not give permission to another app on the same drupal instance. 
+ * @see fbapp_bridge_user_boot()
+ * @see is_fbapp_bridge_app_launch_page()
+ */
+function fbapp_bridge_fbuser_reassign_roles() {
+	global $user;
+	if($user->uid != 1) {	
+		if(is_fbapp_bridge_app_launch_page()) {			
+			$fbapp_bridge_rec_id = arg(2);
+			$result = db_query('SELECT * FROM {'.FBAPP_BRIDGE_USERS_TBL.'} WHERE uid = :uid AND fbapp_bridge_rec_id = :fbapp_bridge_rec_id', array(':uid' => $user->uid, ':fbapp_bridge_rec_id' => $fbapp_bridge_rec_id));			
+			foreach ($result as $record) {
+				//print "<pre>"; print_r($record); print "</pre>";
+				$user->is_fbuser = 1;
+				$user->roles = array(DRUPAL_AUTHENTICATED_RID => "authenticated user");
+				
+				$fbapp_bridge = fbapp_bridge_app_load($fbapp_bridge_rec_id);
+				if($record->has_authorized_app == 1) {
+					if(isset($fbapp_bridge["authenticated_rid"]) && $fbapp_bridge["authenticated_rid"] != 0) {
+						$user->roles[$fbapp_bridge["authenticated_rid"]] = "fbapp authorized";
+					}
+				} else {
+					if(isset($fbapp_bridge["anonymous_rid"]) && $fbapp_bridge["anonymous_rid"] != 0) {
+						$user->roles[$fbapp_bridge["anonymous_rid"]] = "fbapp unauthorized";
+					}
+				}
+			}
+			$_SESSION["fbuser_roles"] = $user->roles;
+		} else {
+			if(isset($_SESSION["fbuser_roles"])) {
+				$user->roles = $_SESSION["fbuser_roles"];
+			}
+		}	
+	}
+}

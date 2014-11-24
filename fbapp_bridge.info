@@ -1,0 +1,9 @@
+name = FbApp Bridge
+description = Bridges the Facebook App with your Drupal website.
+core = 7.x
+package = FbApp Bridge
+version = "7.x-1.0"
+project = "fbappbridge"
+
+files[] = FbappBridge.class.php
+scripts[] = fbapp_bridge.js

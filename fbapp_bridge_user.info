@@ -1,0 +1,7 @@
+name = FbApp Bridge User
+description = Registers/Initializes facebook user sessions.
+core = 7.x
+package = FbApp Bridge
+version = "7.x-1.0"
+project = "fbappbridge user"
+dependencies[] = fbapp_bridge

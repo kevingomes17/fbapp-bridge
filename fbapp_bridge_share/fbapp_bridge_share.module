@@ -1,0 +1,89 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ * TODO: 
+ * 1. Implement hook_menu() and define a settings form to configure the share channels for the facebook application.
+ *    Input element to specify jQuery selector for elements that would display a popup.
+ */
+function fbapp_bridge_share_menu() {
+	$items = array();
+	$items["admin/structure/fbapp-bridge/share"] = array(
+		'title'             => "Share Settings",
+		'page callback'     => 'fbapp_bridge_share_settings',
+		'access callback'   => 'user_access',
+		'access arguments'  => array('manage facebook apps'),
+		'type' => MENU_LOCAL_TASK,
+		'weight' => 3
+  	);
+	$items["fbapp-bridge-share/ajax/%fbapp_bridge_app/%node"] = array(
+		'title'             => "",
+		'page callback'     => 'fbapp_bridge_share_ajax_markup',
+		'page arguments'	=> array(2,3),
+		'access callback'   => 'user_access',
+		'access arguments' => array('access content'),
+		'type' => MENU_NORMAL_ITEM,
+  	);  	 	
+	return $items;
+}
+
+/**
+ * Implements hook_fbapp_pre_render_node()
+ */
+function fbapp_bridge_share_fbapp_pre_render_node() {	
+	drupal_add_css(drupal_get_path('module', 'fbapp_bridge_share') . '/css/jquery.cluetip.css');	
+	drupal_add_css(drupal_get_path('module', 'fbapp_bridge_share') . '/css/fbapp_bridge_share.css');	
+	
+	$settings = array(
+		"is_fbapp_bridge_launch_page" => 1
+	);
+	drupal_add_js(array("fbapp_bridge_share" => $settings), "setting");
+}
+
+/**
+ * Handler for URL: "fbapp-bridge-share/ajax/%fbapp_bridge_app/%node"
+ */
+function fbapp_bridge_share_ajax_markup($app_rec, $node) {
+	global $base_path, $base_url;
+	
+	$fbapp_bridge_node_url = $base_url.$base_path."fbapp-bridge/{$node->nid}/".$app_rec["rec_id"]."/render-node";
+	$title = str_replace("'", "|", $node->title);
+	$nid = $node->nid;	
+	$description = str_replace("'", "|", strip_tags($node->body["und"][0]["value"]));
+	$picture_url = image_style_url("recipe_thumbnail_grid", $node->field_recipe_image["und"][0]["uri"]);
+	
+	$google_plus_share_url = "https://plus.google.com/share?url={$fbapp_bridge_node_url}";
+	$delicious_share_url = "http://delicious.com/save?url={$fbapp_bridge_node_url}&title=Turano%20CookBook%20Recipe";
+	
+	$tweet_text = "Checkout a Recipe in the Turano Cookbook: ";	
+	$twitter_share_url = "https://twitter.com/share?url={$fbapp_bridge_node_url}&text={$tweet_text}";
+	
+	$s = array("nid" => $nid, "title" => $title, "description" => $description, "picture" => $picture_url);
+	$s_json = json_encode($s);
+	$fb_onclick = "FbappBridgeShare.shareNodeOnFacebook({$s_json})";
+
+	$html = "<div class='fbapp-bridge-share'>";
+	$html .= "<span class='fbapp-bridge-share-icon fbapp-bridge-share-twitter'><a href='{$twitter_share_url}' target='_blank'></a></span>";
+	$html .= "<span class='fbapp-bridge-share-icon fbapp-bridge-share-facebook' onclick='{$fb_onclick}'></span>";
+	$html .= "<span class='fbapp-bridge-share-icon fbapp-bridge-share-delicious'><a href='{$delicious_share_url}' target='_blank'></a></span>";
+	$html .= "<span class='fbapp-bridge-share-icon fbapp-bridge-share-google-plus'><a href='{$google_plus_share_url}' target='_blank'></a></span>"; 
+	$html .= "</div>";
+	print $html;
+	die();
+}
+
+function fbapp_bridge_share_settings() {
+/*
+	$form = array();
+    $form['fb_share_title'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Title for the facebook Share'),
+		'#default_value' => variable_get('fb_share_title', ""),
+		'#size' => 2,
+		'#maxlength' => 2,
+		'#description' => t("The maximum number of links to display in the block."),
+		'#required' => TRUE,
+    );
+    return system_settings_form($form);
+*/	
+}

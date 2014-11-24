@@ -1,0 +1,203 @@
+<?php
+/** @file */
+
+/**
+ * Implements hook_install()
+ */
+function fbapp_bridge_install() {
+	drupal_set_message("Database tables for 'fbapp_bridge' module are configured.");
+}
+
+/**
+ * Implements hook_uninstall()
+ */
+function fbapp_bridge_uninstall() {
+  // drupal_uninstall_schema is called by Drupal
+}
+
+/** 
+ * Implements hook_schema()
+ */
+function fbapp_bridge_schema() {
+	$schema["fbapp_bridge"] = array(
+		'description' => 'The FBApps configured to use with the Drupal website.',
+		'fields' => array(
+			'rec_id' => array(
+				'description' => 'The primary identifier for a app.',
+				'type' => 'serial',
+				'unsigned' => TRUE,
+				'not null' => TRUE
+			),			
+			'app_namespace' => array(
+				'description' => 'User friendly facebook application name.',
+				'type' => 'varchar',
+				'length' => 32,
+				'not null' => TRUE,
+				'default' => ''			
+			),
+			'app_id' => array(
+				'description' => 'Facebook application ID.',
+				'type' => 'varchar',
+				'length' => 32,
+				'not null' => TRUE,
+				'default' => ''
+			),
+			'app_secret_key' => array(
+				'description' => 'Facebook application key.',
+				'type' => 'varchar',
+				'length' => 32,
+				'not null' => TRUE,
+				'default' => ''
+			),
+			'app_description' => array(
+				'description' => 'Description of facebook application name.',
+				'type' => 'varchar',
+				'length' => 300,
+				'not null' => TRUE,
+				'default' => ''			
+			),
+			'anonymous_nid' => array(
+				'description' => 'Node ID to load if user has not authenticated the facebook app.',
+				'type' => 'int',
+				'default' => 0
+			),
+			'canvas_nid' => array(
+				'description' => 'Node ID when facebook Canvas Page is loaded.',
+				'type' => 'int',
+				'default' => 0
+			),
+			'tab_nid' => array(
+				'description' => 'Node ID when facebook Tab Page is loaded.',
+				'type' => 'int',
+				'default' => 0
+			),
+			'perms' => array(
+				'description' => 'Additional permissions required by the application.',
+				'type' => 'varchar',
+				'length' => 200,
+				'default' => ''			
+			),
+			'app_theme' => array(
+				'description' => 'Theme that this application would be using.',
+				'type' => 'varchar',
+				'length' => 32,
+				'default' => ''
+			),
+			'anonymous_rid' => array(
+				'description' => 'User role ID when user is anonymous.',
+				'type' => 'int',
+				'default' => 0,
+			),
+			'authenticated_rid' => array(
+				'description' => 'User role ID when user is authenticated.',
+				'type' => 'int',
+				'default' => 0,			
+			),
+			'debug' => array(
+				'description' => 'Debug statements would be printed.',
+				'type' => 'int',
+				'default' => 1,			
+			),
+			'request_user_login_on' => array(
+				'description' => 'When should the user authentication dialog be shown.',
+				'type' => 'int',
+				'default' => 0,
+			),
+			'created' => array(
+				'description' => 'The Unix timestamp when the record was created.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+			'changed' => array(
+				'description' => 'The Unix timestamp when the record was most recently saved.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+		),
+		'indexes' => array(
+			   'fbapp_bridge_app_changed' => array('changed'),
+			   'fbapp_bridge_app_created' => array('created'),
+		),
+		'unique keys' => array(
+			   'app_id' => array('app_id'),
+		),
+		'primary key' => array('rec_id'),
+	);
+
+	$schema["fbapp_bridge_blocks"] = array(
+		'description' => 'The relation between blocks and the fbapps.',
+		'fields' => array(
+			'rec_id' => array(
+				'description' => 'The primary identifier.',
+				'type' => 'serial',
+				'unsigned' => TRUE,
+				'not null' => TRUE
+			),		
+			'fbapp_bridge_rec_id' => array(
+				'description' => 'Record ID from fbapp_bridge table.',
+				'type' => 'int',
+				'not null' => TRUE,				
+				'default' => 0
+			),
+			'block_module' => array(
+				'description' => 'Module the block is originating from.',
+				'type' => 'varchar',
+				'length' => 100,
+				'default' => ''			
+			),
+			'block_delta' => array(
+				'description' => 'Block delta [machine friendly name]',
+				'type' => 'varchar',
+				'length' => 100,
+				'default' => ''
+			),
+			'theme' => array(
+				'description' => 'Theme this block is used in.',
+				'type' => 'varchar',
+				'length' => 32,				
+				'default' => ''			
+			),
+			'weight' => array(
+				'description' => 'Order of the block.',
+				'type' => 'int',
+				'default' => 0
+			),
+			'region' => array(
+				'description' => 'Whether user has liked the application.',
+				'type' => 'varchar',
+				'length' => 32,
+				'default' => ''
+			),
+			'page_type' => array(
+				'description' => 'Whether the block should be visible on canvas/tab/all page types.',
+				'type' => 'varchar',
+				'length' => 10,
+				'default' => ''
+			),
+			'created' => array(
+				'description' => 'The Unix timestamp when the record was created.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+			'changed' => array(
+				'description' => 'The Unix timestamp when the record was most recently saved.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+		),
+		'indexes' => array(
+			   'fbapp_bridge_blocks_changed' => array('changed'),
+			   'fbapp_bridge_blocks_created' => array('created'),
+		),
+		'unique keys' => array(
+			   'fbapp_bridge_rec_id_block_theme_region' => array('fbapp_bridge_rec_id', 'block_module', 'block_delta', 'theme', 'region'),
+		),
+		'primary key' => array('rec_id'),
+	);	
+	
+	return $schema;
+}

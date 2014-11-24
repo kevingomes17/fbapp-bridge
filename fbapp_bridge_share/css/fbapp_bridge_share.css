@@ -1,0 +1,25 @@
+.fbapp-bridge-share .fbapp-bridge-share-icon {
+	display: inline-block;
+	width: 32px;
+	height: 32px;
+}
+.fbapp-bridge-share .fbapp-bridge-share-icon a {
+	display: inline-block;
+	width: 32px;
+	height: 32px;
+}
+.fbapp-bridge-share .fbapp-bridge-share-twitter {
+	background: url('../media/twitter.png') 0 0 no-repeat;
+}
+.fbapp-bridge-share .fbapp-bridge-share-facebook {
+	background: url('../media/facebook.png') 0 0 no-repeat;
+}
+.fbapp-bridge-share .fbapp-bridge-share-delicious {
+	background: url('../media/delicious.png') 0 0 no-repeat;
+}
+.fbapp-bridge-share .fbapp-bridge-share-google-plus {
+	background: url('../media/google-plus.png') 0 0 no-repeat;
+}
+.tabledrag-changed-warning {
+	display: none !important;
+}

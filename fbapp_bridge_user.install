@@ -1,0 +1,134 @@
+<?php
+/** @file */
+
+/**
+ * Implements hook_install().
+ */
+function fbapp_bridge_user_install() {
+	drupal_set_message("Database tables for 'fbapp_bridge_user' module are configured.");
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function fbapp_bridge_user_uninstall() {
+  // drupal_uninstall_schema is called by Drupal
+}
+
+/**
+ * Implements hook_schema().
+ */
+function fbapp_bridge_user_schema() {
+	$schema["fbapp_bridge_users"] = array(
+		'description' => 'The relation between users and the fbapps.',
+		'fields' => array(
+			'rec_id' => array(
+				'description' => 'The primary identifier.',
+				'type' => 'serial',
+				'unsigned' => TRUE,
+				'not null' => TRUE
+			),		
+			'fbapp_bridge_rec_id' => array(
+				'description' => 'Record ID from fbapp_bridge table.',
+				'type' => 'int',
+				'not null' => TRUE,				
+				'default' => 0
+			),			
+			'uid' => array(
+				'description' => 'Drupal uid.',
+				'type' => 'int',
+				'default' => 0
+			),
+			'user_fbid' => array(
+				'description' => 'User FBID.',
+				'type' => 'varchar',
+				'length' => 32,				
+				'default' => ''			
+			),
+			'has_authorized_app' => array(
+				'description' => 'Whether user has authorized app.',
+				'type' => 'int',
+				'default' => 0,
+			),
+			'created' => array(
+				'description' => 'The Unix timestamp when the record was created.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+			'changed' => array(
+				'description' => 'The Unix timestamp when the record was most recently saved.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+		),
+		'indexes' => array(
+			   'fbapp_bridge_users_changed' => array('changed'),
+			   'fbapp_bridge_users_created' => array('created'),
+		),
+		'unique keys' => array(
+			   'fbapp_bridge_rec_id_uid_fbid' => array('fbapp_bridge_rec_id', 'uid', 'user_fbid'),
+		),
+		'primary key' => array('rec_id'),
+	);
+	
+	$schema["fbapp_bridge_users_data"] = array(
+		'description' => 'This table stores additional data for each user.',
+		'fields' => array(
+			'fbud_id' => array(
+				'description' => 'The primary identifier.',
+				'type' => 'serial',
+				'unsigned' => TRUE,
+				'not null' => TRUE
+			),		
+			'fbud_user_fbid' => array(
+				'description' => 'FBID of the user from fbapp_bridge_users table.',
+				'type' => 'varchar',
+				'length' => 32,
+				'not null' => TRUE,				
+				'default' => ''
+			),			
+			'fbud_email' => array(
+				'description' => 'Email address of the user.',
+				'type' => 'varchar',
+				'length' => 32,
+				'default' => ''
+			),
+			'fbud_gender' => array(
+				'description' => 'Gender of the user.',
+				'type' => 'varchar',
+				'length' => 10,				
+				'default' => ''			
+			),
+			'fbud_hometown' => array(
+				'description' => 'Hometown address of the user.',
+				'type' => 'varchar',
+				'length' => 32,
+				'default' => '',
+			),
+			'created' => array(
+				'description' => 'The Unix timestamp when the record was created.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+			'changed' => array(
+				'description' => 'The Unix timestamp when the record was most recently saved.',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0
+			),
+		),
+		'indexes' => array(
+			   'fbapp_bridge_users_changed' => array('changed'),
+			   'fbapp_bridge_users_created' => array('created'),
+		),
+		'unique keys' => array(
+			   'fbapp_bridge_users_data_fbud_user_fbid' => array('fbud_user_fbid'),
+		),
+		'primary key' => array('fbud_id'),
+	);
+	
+	return $schema;
+}	

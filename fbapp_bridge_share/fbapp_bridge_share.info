@@ -1,0 +1,12 @@
+name = FbApp Bridge Share
+description = Share functionality (Facebook, Twitter, G+ etc.)
+core = 7.x
+package = FbApp Bridge
+version = "7.x-1.0"
+project = "fbappbridge share"
+dependencies[] = fbapp_bridge
+
+
+scripts[] = js/jquery.cluetip.js
+scripts[] = fbapp_bridge_share.js
+;stylesheets[all][] = css/jquery.clustip.css

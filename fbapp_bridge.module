@@ -1,0 +1,825 @@
+<?php
+/** @file */
+
+/**
+ * @todo Create a new content type "FBApp Bridge" - DONE [KG: Created 2 content types 'Canvas' and 'Tab']
+ * @todo Autocomplete textfield for Anonymous NID, Authenticated NID on Add/Edit form
+ * @todo Drop-down for extended permissions on Add/Edit form
+ * @todo Drop-down for Role ID field
+ * @todo Node ID for maintenance page for "Facebook App"
+ * @todo Being able to add Custom blocks to the facebook app.
+ * @todo Capture preference on height of the app. [AutoSize/Single Page]
+ */
+
+/**
+ * SQL table that contains facebook app bridge configuration details.
+ */
+define("FBAPP_BRIDGE_TBL", "fbapp_bridge");
+/**
+ * SQL table that contains theme-block configuration.
+ */
+define("FBAPP_BRIDGE_BLOCKS_TBL", "fbapp_bridge_blocks");
+/**
+ * Used to collect fb user configuration from other modules. Introduced by fbapp_bridge module.
+ * This is created for a future use-case, when other modules would use the fbapp_bridge module to save facebook app specific configuration.
+ */
+define("INIT_FBUSER_HOOK", "init_fbuser");
+/**
+ * Used to collect fbapp configuration from all modules before rendering a node.
+ */
+define("FBAPP_PRE_RENDER_NODE_HOOK", "fbapp_pre_render_node"); 
+/**
+ * Used to notify other modules that node has been rendered and to pass information fbapp_beidge has collected.
+ */
+define("FBAPP_POST_RENDER_NODE_HOOK", "fbapp_post_render_node");
+
+define("FBAPP_BRIDGE_LANDING_PAGE", "admin/structure/fbapp-bridge/apps");
+
+//$fbapp_bridge_fbobj = null;
+
+/**
+ * Implements hook_boot().
+ * Here you have access to functions defined in bootstrap.inc only. i.e all drupal_* functions.
+ * Loads the facebook php framework and the php mobile_detect php library.
+ *
+ * @see fbapp_bridge_facebook_init()
+ * @see fbapp_bridge_mobiledetect_init()
+ */
+function fbapp_bridge_boot() {
+	fbapp_bridge_facebook_init();
+	fbapp_bridge_mobiledetect_init();
+}
+
+/**
+ * Implements hook_init().
+ * Loads the necessary core modules files node.inc, node.pages.inc.
+ */
+function fbapp_bridge_init() {
+	module_load_include('inc', 'node', 'node.pages');
+}
+
+/**
+ * Implements hook_perm().
+ * Introduces the "manage facebook apps" permission. User having this permission only can create facebook app brige configuration.
+ */
+function fbapp_bridge_permission() {
+	return array(
+		"manage facebook apps" => array(
+			'title' => t('Manage FBApp Bridge Apps'),
+			'description' => t('Perform administrative tasks for facebook apps.')
+		)
+	);
+}
+
+/**
+ * Implements hook_menu().
+ * The following menu items are available:
+ * "fbapp-bridge", "fbapp-bridge/apps", "fbapp-bridge/app/add", "fbapp-bridge/app/%",
+ * "fbapp-bridge/app/%/edit", "fbapp-bridge/app/%/blocks", "fbapp-bridge/app/%/block/%/delete",
+ * "fbapp-bridge/app/%/delete", "fbapp-bridge/app/%/launch", "fbapp-bridge/app/%/canvas",
+ * "fbapp-bridge/app/%/tab", "fbapp-bridge/app/%fbapp_bridge_app/render-path", ""fbapp-bridge/app/%fbapp_bridge_app/render-node",
+ * "fbapp-bridge/channel"
+ *
+ * @see fbapp_bridge_apps_list() 
+ * @see fbapp_bridge_app_add()
+ * @see fbapp_bridge_app_edit()
+ * @see fbapp_bridge_configure_blocks()
+ * @see fbapp_bridge_block_delete()
+ * @see fbapp_bridge_app_delete()
+ * @see fbapp_bridge_app_launch()
+ * @see fbapp_bridge_app_render_path()
+ * @see fbapp_bridge_app_render_node()
+ * @see fbapp_bridge_channel_file()
+ */
+function fbapp_bridge_menu() {
+	$items = array();
+	$items["admin/structure/fbapp-bridge"] = array(
+		'title'             => "FBApp Bridge",
+		'page callback'     => 'fbapp_bridge_apps_list',
+		'access callback'   => 'user_access',
+		'access arguments'  => array('manage facebook apps'),
+		'type' => MENU_NORMAL_ITEM,
+		'file'              => 'fbapp_bridge.admin.inc',
+		'weight' => 1
+  	);
+	$items["admin/structure/fbapp-bridge/apps"] = array(
+		'title'             => "FBApp Bridge",
+		'type' => MENU_DEFAULT_LOCAL_TASK,
+		'weight' => 1
+  	);  	
+	$items["admin/structure/fbapp-bridge/app/add"] = array(
+		'title'             => "Create App",
+		'page callback'     => 'fbapp_bridge_app_add',
+		'access callback'   => 'user_access',
+		'access arguments'  => array('manage facebook apps'),
+		'file'              => 'fbapp_bridge.admin.inc',
+		'type' => MENU_LOCAL_TASK,
+		'weight' => 2
+  	);
+  	
+	$items["admin/structure/fbapp-bridge/app/%"] = array(
+		'title'             => "Edit App",
+		'page callback'     => 'fbapp_bridge_app_edit',
+		'page arguments' => array(4),
+		'access callback'   => 'user_access',
+		'access arguments'  => array('manage facebook apps'),
+		'file'              => 'fbapp_bridge.admin.inc',
+		'type' => MENU_NORMAL_ITEM,
+  	);  	  	
+	$items["admin/structure/fbapp-bridge/app/%/edit"] = array(
+		'title'             => "Edit App",
+		'type' => MENU_DEFAULT_LOCAL_TASK,
+		'weight' => 1
+  	);  	
+	$items["admin/structure/fbapp-bridge/app/%/blocks"] = array(
+		'title'             => "Configure Blocks",
+		'page callback'     => 'fbapp_bridge_configure_blocks',
+		'page arguments' => array(4),
+		'access callback'   => 'user_access',
+		'access arguments'  => array('manage facebook apps'),
+		'file'              => 'fbapp_bridge.admin.inc',
+		'type' => MENU_LOCAL_TASK,
+		'weight' => 2
+  	);
+	$items["admin/structure/fbapp-bridge/app/%/block/%/delete"] = array(
+		'title'             => "Delete Block",
+		'page callback'     => 'fbapp_bridge_block_delete',
+		'page arguments' => array(4,6),
+		'access callback'   => 'user_access',
+		'access arguments'  => array('manage facebook apps'),
+		'file'              => 'fbapp_bridge.admin.inc',
+		'type' => MENU_NORMAL_ITEM,
+  	);  		
+	$items["admin/structure/fbapp-bridge/app/%/delete"] = array(
+		'title'             => "Delete a bridged facebook app",
+		'page callback'     => 'fbapp_bridge_app_delete',
+		'page arguments' => array(4),
+		'access callback'   => 'user_access',
+		'access arguments'  => array('manage facebook apps'),
+		'file'              => 'fbapp_bridge.admin.inc',
+  	);
+  	
+  	$items["fbapp-bridge/app/%/launch"] = array(
+		'title'             => "Facebook Application",
+		'page callback'     => 'fbapp_bridge_app_launch',
+		'page arguments' => array(2, "launch"),
+		'access callback'   => 'user_access',
+		'access arguments' => array('access content'),
+  	);
+  	$items["fbapp-bridge/app/%/tab"] = array(
+		'title'             => "Facebook Application",
+		'page callback'     => 'fbapp_bridge_app_launch',
+		'page arguments' => array(2, "tab"),
+		'access callback'   => 'user_access',
+		'access arguments' => array('access content'),
+  	);
+  	$items["fbapp-bridge/app/%/canvas"] = array(
+		'title'             => "Facebook Application",
+		'page callback'     => 'fbapp_bridge_app_launch',
+		'page arguments' => array(2, "canvas"),
+		'access callback'   => 'user_access',
+		'access arguments' => array('access content'),
+  	);
+  	$items["fbapp-bridge/app/%fbapp_bridge_app/render-path"] = array(
+		'title'             => "",
+		'page callback'     => 'fbapp_bridge_app_render_path',
+		'page arguments' => array(2),
+		'access callback'   => 'user_access',
+		'access arguments' => array('access content'),
+  	);
+  	//This menu item is important for nodes to load correctly
+	$items["fbapp-bridge/%node/%fbapp_bridge_app/render-node"] = array(
+		'title'             => "",
+		'page callback'     => 'fbapp_bridge_app_render_node',
+		'page arguments' => array(1,2),
+		'access callback'   => 'user_access',
+		'access arguments' => array('access content'),
+  	);
+  	$items["fbapp-bridge/channel"] = array(
+		'title'             => "Facebook Channel File",
+		'page callback'     => 'fbapp_bridge_channel_file',
+		'access callback'   => TRUE,
+		'type' => MENU_NORMAL_ITEM,
+  	);
+  	return $items;
+}
+
+/**
+ * Implements hook_theme().
+ * Declares the theming functions implemented/used by the module.
+ *
+ * @see theme_fbapp_bridge_apps_list()
+ * @see theme_fbapp_bridge_blocks_list()
+ */
+function fbapp_bridge_theme() {
+	return array(
+		'fbapp_bridge_apps_list' => array(
+		  'arguments' => array('form' => NULL),
+		  'file' => 'fbapp_bridge.theme.inc',
+		),
+		'fbapp_bridge_blocks_list' => array(
+		  'arguments' => array('form' => NULL),
+		  'file' => 'fbapp_bridge.theme.inc',
+		),	
+	);
+}
+
+/**
+ * Implements hook_custom_theme().
+ * This hook can be used to dynamically set the theme for the current page request. 
+ *
+ * @see is_fbapp_bridge_app_launch_page()
+ * @see fbapp_bridge_app_load()
+ */
+function fbapp_bridge_custom_theme() {
+	if(is_fbapp_bridge_app_launch_page()) {		
+		$rec_id = arg(2);
+		$app_rec = fbapp_bridge_app_load($rec_id);
+		if(isset($app_rec["app_theme"]) && trim($app_rec["app_theme"]) != "") {
+			return $app_rec["app_theme"];
+		}
+	}
+}
+
+/**
+ * Implements hook_page_alter()
+ * Very important function. The *content* region is rendered in fbapp_bridge.inc
+ * All the other regions are rendered in here.
+ *
+ * @see is_fbapp_bridge_app_launch_page()
+ * @see fbapp_bridge_app_load()
+ * @see fbapp_bridge_blocks_renderable_list()
+ */
+function fbapp_bridge_page_alter(&$page) {
+	if(is_fbapp_bridge_app_launch_page()) {			
+		$rec_id = arg(2);
+		$app_rec = fbapp_bridge_app_load($rec_id);
+		if(isset($app_rec["app_theme"]) && trim($app_rec["app_theme"]) != "") {
+			$theme = $app_rec["app_theme"];
+			$regions = system_region_list($theme);	//key=>value pair
+			foreach($regions as $machine_name=>$display_name) {
+				$blocks_in_region = fbapp_bridge_blocks_renderable_list($app_rec["rec_id"], $app_rec["app_theme"], $machine_name);
+				if($machine_name != "content") {
+					$page[$machine_name] = $blocks_in_region;
+				} else {
+					if(count($blocks_in_region) > 0) {
+						$page[$machine_name][] = $blocks_in_region;
+					}
+				}
+			}
+		}		
+		//print "<pre>"; print_r($page); print "</pre>";
+	}
+}
+
+/**
+ * Implements hook_form_alter().
+ *
+ * @see is_fbapp_bridge_app_launch_page()
+ */
+function fbapp_bridge_form_alter(&$form, &$form_state, $form_id) {
+	if(is_fbapp_bridge_app_launch_page()) {		
+		if(isset($form["#node_edit_form"]) && $form["#node_edit_form"] == 1) {
+			//$form["actions"]["submit"]["#submit"][] = "fbapp_bridge_redirect_on_form_submit";
+			$form["actions"]["submit"]["#value"] = "Submit";
+		} else if(isset($form["#id"]) && $form["#id"] == "comment-form") {			
+			$dest = drupal_get_destination();
+			$form["actions"]["submit"]["#value"] = "submit comment";
+			$form["#action"] = url($dest["destination"]);
+			$form["#submit"][] = "fbapp_bridge_redirect_on_form_submit";
+			$form["author"]["#prefix"] = "<div class='form-item-author'>";
+			$form["author"]["#suffix"] = "</div>";
+			//print "<pre>"; print_r($form); print "</pre>";
+		} else if(isset($form["#id"]) && $form["#id"] == "search-block-form") {			
+			$form["#method"] = "GET";
+		} else {
+			$form["#submit"][] = "fbapp_bridge_redirect_on_form_submit";
+		}
+		
+		if(isset($form["#id"]) && $form["#id"] == "contact-site-form") {
+			$form["name"]["#default_value"] = "";
+		}
+		//print "<pre>"; print_r($form); print "</pre>";
+	}
+}
+
+/**
+ * Implements hook_node_insert().
+ * @see is_fbapp_bridge_app_launch_page()
+ */
+function fbapp_bridge_node_insert($node) {
+	//print "<pre>"; print_r($node); print "</pre>"; die("asd");
+	if($node->type == "recipe" && is_fbapp_bridge_app_launch_page()) {
+		$rec_id = arg(2);
+		$nid = $node->nid;
+		drupal_goto("fbapp-bridge/{$nid}/{$rec_id}/render-node");
+	}
+}
+
+/****************************************************** All hooks above this line. ****************/
+
+/**
+ * Handler for URL: "fbapp-bridge/app/%/launch".
+ * Renders the node and the blocks configured to be used with the facebook app.
+ * Use the application outside facebook. This is not canvas application.
+ *
+ * @param int $rec_id - Record ID  of the bridge configuration on the fbapp_bridge table.
+ * @param string $page - Possible value "canavs" or "tab"
+ *
+ * @see fbapp_bridge_app_load()
+ * @see fbapp_bridge_invoke()
+ * @see fbapp_bridge_app_get_settings_array()
+ */
+function fbapp_bridge_app_launch($rec_id, $page) {
+	global $user, $base_path, $base_url;
+	$app_rec = fbapp_bridge_app_load($rec_id);
+	$dest = drupal_get_destination();
+	
+	if(isset($app_rec["rec_id"])) {
+		$_SESSION["fbapp_bridge_page_type"] = $page;		
+		$init_fbuser_hook_module_data = fbapp_bridge_invoke(array("config"=>$app_rec, "fb"=>FbappBridge::getFb()), INIT_FBUSER_HOOK);		
+		$settings = fbapp_bridge_app_get_settings_array($app_rec, $init_fbuser_hook_module_data, $page);
+		drupal_add_js(array("fbapp_bridge" => $settings), "setting");
+		
+		//This globals data can be used to conditionally render data in the NODE/BLOCKS.
+		$GLOBALS["fbapp_bridge_data"] = array(
+			"config" => $app_rec, 
+			"fb" => FbappBridge::getFb(), 
+			"mobiledetect" => FbappBridge::getMobileDetect(),
+			"module_data" => $init_fbuser_hook_module_data
+		);
+		$_SESSION["fbapp_bridge_data"] = $GLOBALS["fbapp_bridge_data"];
+		fbapp_bridge_invoke($GLOBALS["fbapp_bridge_data"], FBAPP_PRE_RENDER_NODE_HOOK);
+		//print "<pre>"; print_r($GLOBALS["fbapp_bridge_data"]); print "</pre>";
+		
+		if($page == "canvas" || $page == "launch") {
+			$nid_to_load = $app_rec["canvas_nid"];	
+		} else {
+			$nid_to_load = $app_rec["tab_nid"];	
+		}		
+		if(isset($init_fbuser_hook_module_data["fbuser_has_authorized_app"]) && $init_fbuser_hook_module_data["fbuser_has_authorized_app"] == NOT_AUTHORIZED_APP) { 
+			$nid_to_load = $app_rec["anonymous_nid"];
+		}		
+		$node = node_load($nid_to_load);
+		
+		fbapp_bridge_invoke($GLOBALS["fbapp_bridge_data"], FBAPP_POST_RENDER_NODE_HOOK);			
+		drupal_set_title($node->title);
+		$node->title = "";
+		$node_view = node_view($node);
+		return drupal_render($node_view);		
+	} else {
+		return "Invalid application requested!";
+	}
+}
+
+/**
+ * Handler for URL: "fbapp-bridge/channel".
+ * Channel File required for Facebook apps.
+ */
+function fbapp_bridge_channel_file() {
+	$cache_expire = 60*60*24*365;
+	header("Pragma: public");
+	header("Cache-Control: max-age=".$cache_expire);
+	header('Expires: ' . gmdate('D, d M Y H:i:s', time()+$cache_expire) . ' GMT');
+	
+	echo "<script src='//connect.facebook.net/en_US/all.js'></script>";
+	die();
+}
+
+/**
+ * Handler for URL: "fbapp-bridge/app/%fbapp_bridge_app/render-path"
+ * Renders a drupal page. Use fbapp_bridge_app_render_node() to render a node.
+ *
+ * @see fbapp_bridge_app_get_render_path()
+ * @see fbapp_bridge_invoke()
+ * @see fbapp_bridge_app_get_settings_array()
+ * @see fbapp_bridge_is_comment_reply_path()
+ */
+function fbapp_bridge_app_render_path($app_rec) {
+	global $base_path, $base_url;
+	
+	$path = fbapp_bridge_app_get_render_path();
+	//print $path; print "<pre>"; print_r($user); print "</pre>"; //die();
+	$html = "Please specify a valid path!";
+	
+	if(isset($app_rec["rec_id"])) {
+		$init_fbuser_hook_module_data = fbapp_bridge_invoke(array("config"=>$app_rec, "fb"=>FbappBridge::getFb()), INIT_FBUSER_HOOK);		
+		$settings = fbapp_bridge_app_get_settings_array($app_rec, $init_fbuser_hook_module_data);
+		drupal_add_js(array("fbapp_bridge" => $settings), "setting");
+		
+		$router_item = menu_get_item($path); //this is not redundant. This is required.
+		
+		//This globals data can be used to conditionally render data in the NODE/BLOCKS.
+		$GLOBALS["fbapp_bridge_data"] = array(
+			"config" => $app_rec, 
+			"fb" => FbappBridge::getFb(), 
+			"mobiledetect" => FbappBridge::getMobileDetect(),
+			"module_data" => $init_fbuser_hook_module_data
+		);
+		$_SESSION["fbapp_bridge_data"] = $GLOBALS["fbapp_bridge_data"];
+		fbapp_bridge_invoke($GLOBALS["fbapp_bridge_data"], FBAPP_PRE_RENDER_NODE_HOOK);
+
+		$is_comment_reply = fbapp_bridge_is_comment_reply_path($path);		
+		if($is_comment_reply["is_comment_reply"] == 1) {
+			$node = node_load($is_comment_reply["nid"]);
+			drupal_set_title("Reply to Comment: ".$node->title);
+		}
+		
+		if(isset($init_fbuser_hook_module_data["fbuser_login_url"])) {
+		    if ($app_rec["request_user_login_on"] == FbappBridge::LOGIN_BTN_ON_UNAUTHORIZED_PAGES && !$router_item['access']) {
+				//die("kamba");
+				$perms = $app_rec["perms"]; $js_onlogin_function = "FbappBridge.redirectAfterLogin()";
+				$fbml_login_btn = FbappBridge::getFbmlLoginButton($perms, $js_onlogin_function);
+				$html = "<div class='facebook-login-button-wrapper'>".$fbml_login_btn."<br/>This page will auto refresh after you login.</div>";
+			} else {
+				//die("mamba");
+				$html = menu_execute_active_handler($path);
+			}
+		} else {
+			//die("samba");
+			$html = menu_execute_active_handler($path);
+		}
+		
+		fbapp_bridge_invoke($GLOBALS["fbapp_bridge_data"], FBAPP_POST_RENDER_NODE_HOOK);		
+	}
+	return $html;
+}
+
+/**
+ * Handler for URL: "fbapp-bridge/%node/%fbapp_bridge_app/render-node".
+ * Renders a drupal node. This is to make sure the comment form and threaded comments are displayed below a node.
+ *
+ * @see fbapp_bridge_invoke()
+ * @see fbapp_bridge_app_get_settings_array()
+ */
+function fbapp_bridge_app_render_node($node, $app_rec) {
+	global $base_path, $base_url;
+	if(isset($app_rec["rec_id"])) {
+		$init_fbuser_hook_module_data = fbapp_bridge_invoke(array("config"=>$app_rec, "fb"=> FbappBridge::getFb()), INIT_FBUSER_HOOK);		
+		$settings = fbapp_bridge_app_get_settings_array($app_rec, $init_fbuser_hook_module_data);
+		drupal_add_js(array("fbapp_bridge" => $settings), "setting");
+		
+		//This globals data can be used to conditionally render data in the NODE/BLOCKS.
+		$GLOBALS["fbapp_bridge_data"] = array(
+			"config" => $app_rec, 
+			"fb" => FbappBridge::getFb(), 
+			"mobiledetect" => FbappBridge::getMobileDetect(),
+			"module_data" => $init_fbuser_hook_module_data
+		);
+		$_SESSION["fbapp_bridge_data"] = $GLOBALS["fbapp_bridge_data"];
+		fbapp_bridge_invoke($GLOBALS["fbapp_bridge_data"], FBAPP_PRE_RENDER_NODE_HOOK);
+				
+		drupal_set_title($node->title);
+		$node_build_array = node_view($node);
+		$html = drupal_render($node_build_array);
+		
+		fbapp_bridge_invoke($GLOBALS["fbapp_bridge_data"], FBAPP_POST_RENDER_NODE_HOOK);
+		return $html;
+	}
+}
+
+/**
+ * @todo Move the comment form functionality to another module. *fbapp_bridge_comment*
+ * @see fbapp_bridge_app_get_render_path()
+ * @see fbapp_bridge_is_comment_reply_path()
+ */
+function fbapp_bridge_redirect_on_form_submit(&$form, &$form_state) {
+	//print "<pre>"; print_r($form); print "</pre>"; die($path);
+	$dest = drupal_get_destination();
+	$path = fbapp_bridge_app_get_render_path();
+	$is_comment_reply = fbapp_bridge_is_comment_reply_path($path);
+	if($is_comment_reply["is_comment_reply"] == 1) {
+		$nid = $is_comment_reply["nid"];
+		$comment_id = $is_comment_reply["comment_id"];
+		$rec_id = arg(2);
+		$form_state["redirect"] = url("fbapp-bridge/{$nid}/{$rec_id}/render-node");
+	} else if(isset($form_state["nid"]) && $form["#node_edit_form"] == 1) {
+		$rec_id = arg(2);
+		$nid = $form_state["nid"];
+		$form_state["redirect"] = url("fbapp-bridge/{$nid}/{$rec_id}/render-node");
+	} else {
+		$form_state["redirect"] = $dest["destination"];
+	}	
+}
+
+/**
+ * Invokes all module functions that implement fbapp_bridge hooks.
+ */
+function fbapp_bridge_invoke($data, $hook) {
+	$module_data = array();
+	foreach (module_implements($hook) as $module) {
+		$temp_data = module_invoke($module, $hook, $data);
+		switch(gettype($temp_data)) {
+			case "array":
+				$module_data = array_merge($temp_data, $module_data);
+			break;
+		}
+	}
+	return $module_data;
+}
+
+/**
+ * Returns list of blocks specific to a region. 
+ * This function is invoked from the fbapp_bridge_page_alter().
+ *
+ * Copied code snippets from _block_render_blocks() in block.module
+ */
+function fbapp_bridge_blocks_renderable_list($fbapp_bridge_rec_id, $theme, $region) {
+	$records = db_select(FBAPP_BRIDGE_BLOCKS_TBL, 'c')->fields('c')->condition('fbapp_bridge_rec_id', $fbapp_bridge_rec_id, '=')->condition("theme", $theme, "=")->condition("region", $region, "=")->orderBy("weight", "ASC")->execute()->fetchAll();
+	$blocks = array();
+	foreach($records as $rec) {
+		$block = (object) array("bid"=>$rec->rec_id,"module"=>$rec->block_module,"delta"=>$rec->block_delta,"theme"=>$rec->theme,"status"=>1,"weight"=>$rec->weight,"region"=>$rec->region,"custom"=>1,"visibility"=>0,"pages"=>"","title"=>"","cache"=>4);	
+    	$array = call_user_func_array("{$rec->block_module}_block_view", array($rec->block_delta));
+    	if (isset($array) && is_array($array)) {
+            foreach ($array as $k => $v) {
+              $block->$k = $v;
+            }
+    	}
+    	
+    	if (isset($block->content) && $block->content) {
+			// Normalize to the drupal_render() structure.
+			if (is_string($block->content)) {
+			  $block->content = array('#markup' => $block->content);
+			}
+			
+			// Override default block title if a custom display title is present.
+			if ($block->title) {
+			  // Check plain here to allow module generated titles to keep any
+			  // markup.
+			  $block->subject = $block->title == '<none>' ? '' : check_plain($block->title);
+			}
+			if (!isset($block->subject)) {
+			  $block->subject = '';
+			}
+			$blocks[$rec->block_module."_".$rec->block_delta] = $block;
+		}
+	}
+	
+	if(count($blocks)) {
+		return _block_get_renderable_array($blocks);
+	} else {
+		return $blocks;
+	}
+}
+
+/**
+ * Helper function used by other functions.
+ * @todo Change links specific to Turano Bread
+ *
+ * @param array $app_rec
+ * @param array $init_fbuser_hook_module_data
+ * @param boolean $page
+ *
+ * @see fbapp_bridge_app_launch()
+ * @see fbapp_bridge_app_render_node()
+ * @see fbapp_bridge_app_render_path()
+ */
+function fbapp_bridge_app_get_settings_array($app_rec, $init_fbuser_hook_module_data, $page = NULL) {
+	global $base_path, $base_url;
+
+	if(arg(3) == "launch" || arg(3) == "canvas" || arg(3) == "tab") {
+		$page_type = arg(3);
+		$_SESSION["fbapp_bridge_settings_page_type"] = $page_type;
+	} else {
+		if(isset($_SESSION["fbapp_bridge_settings_page_type"])) {
+			$page_type = $_SESSION["fbapp_bridge_settings_page_type"];
+		} else {
+			$page_type = "launch";
+		}
+	}
+
+	//print "<pre>"; print_r($_SESSION); print "</pre>";
+	//Always ask for email permission.
+	if(empty($app_rec["perms"])) {
+		$app_rec["perms"] = "email";
+	} else {
+		$app_rec["perms"] .= ",email";
+	}
+	
+	$settings = array(
+		'appId' => $app_rec["app_id"],			
+		'basePath' => $base_path,
+		'baseUrl' => $base_url,
+		'channelUrl' => $base_url.$base_path."fbapp-bridge/channel",
+		'permissions' => $app_rec["perms"],
+		'recId' => $app_rec["rec_id"],
+		'appNamespace' => $app_rec["app_namespace"],
+		'pageType' => $page_type,		
+		'request_fbuser_login' => 0
+	);
+
+	if(isset($init_fbuser_hook_module_data["fbuser_login_url"]) && !isset($_GET["successful_login"])) {
+		$dest = drupal_get_destination();
+		if(strcmp($app_rec["request_user_login_on"], FbappBridge::LOGIN_ON_PAGE_LOAD) == 0) {
+			$settings["request_fbuser_login"] = 1;
+		}
+
+		if($page_type == "canvas") {
+			$settings["redirect_page_after_login"] = FbappBridge::getFbAppUrl($app_rec["app_namespace"]);
+		} else if($page_type == "tab") {
+			$settings["redirect_page_after_login"] = "https://www.facebook.com/TuranoBread/app_".$app_rec["app_id"]; //$base_url.url($dest["destination"]);
+		} else {
+			$settings["redirect_page_after_login"] = $base_url.url($dest["destination"])."?successful_login=1";
+		}
+	}
+	return $settings;
+}
+
+/**
+ * Loads the Facebook PHP library and initializes the facebook Object.
+ * Requries the facebook library to be present in /sites/all/libraries/facebook-php-sdk/src/facebook.php.
+ * Invoked from hook_boot().
+ *
+ * @see fbapp_bridge_boot()
+ */
+function fbapp_bridge_facebook_init() {
+	//global $fbapp_bridge_fbobj;
+	
+	$file_exists_flag = TRUE;
+	
+	// Find Facebook's PHP SDK.
+	$fb_php_sdk = DRUPAL_ROOT.'/sites/all/libraries/facebook-php-sdk/src/facebook.php';
+	if(!file_exists($fb_php_sdk)) {
+		$file_exists_flag = FALSE;
+		drupal_set_message("Module 'fbapp_bridge' expects facebook.php in the following location: {$fb_php_sdk}", "warning");
+	}	
+	
+	if(is_fbapp_bridge_app_launch_page() && $file_exists_flag == TRUE) {
+		require_once $fb_php_sdk;		
+		$app_rec = fbapp_bridge_app_load(arg(2));
+		FbappBridge::initFb($app_rec["app_id"], $app_rec["app_secret_key"]);		
+	}
+}
+
+/**
+ * Loads the PHP MobileDetect library.
+ * Invoked from hook_boot().
+ * @see fbapp_bridge_boot()
+ */
+function fbapp_bridge_mobiledetect_init() {
+	$file_exists_flag = TRUE;
+			
+	// Find Facebook's PHP SDK.
+	$mobiledetect_php_sdk = DRUPAL_ROOT.'/sites/all/libraries/Mobile_Detect/Mobile_Detect.php';
+	if(!file_exists($mobiledetect_php_sdk)) {
+		$file_exists_flag = FALSE;
+		drupal_set_message("Module 'fbapp_bridge' expects Mobile_Detect.php in the following location: {$mobiledetect_php_sdk}", "warning");
+	}		
+	
+	if(is_fbapp_bridge_app_launch_page() && $file_exists_flag == TRUE) {
+		require_once $mobiledetect_php_sdk;
+	}	
+}
+
+/**
+ * This function is used to decide whether facebook PHP/JS libraries should be loaded on page.
+ * It parses the URL to determine the same.
+ */
+function is_fbapp_bridge_app_launch_page() {
+	global $base_pth;
+	
+	if(arg(0) == "fbapp-bridge" && (arg(3) == "launch" || arg(3) == "render-path" || arg(3) == "render-node" || arg(3) == "canvas" || arg(3) == "tab")) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+/**
+ * Determines whether the URL is for comment reply.
+ * @return array $data
+ */
+function fbapp_bridge_is_comment_reply_path($path) {
+	$flag = FALSE; $nid = 0; $comment_id = 0;
+	$is_comment_reply = substr($path, 0, 14);
+	if($is_comment_reply == "comment/reply/") {
+		$flag = TRUE;
+		$nid_and_comment_id = substr($path, 14);
+		$temp = explode("/", $nid_and_comment_id);
+		$nid = $temp[0];		
+		$comment_id = $temp[1];
+	} 
+	
+	$data = array("is_comment_reply" => $flag, "nid" => $nid, "comment_id" => $comment_id);
+	return $data;
+}
+
+/**
+ * Returns the path to be rendered.
+ * @see is_fbapp_bridge_app_launch_page()
+ */
+function fbapp_bridge_app_get_render_path() {
+	$path = "";
+	if(is_fbapp_bridge_app_launch_page()) {	
+		$start = 4; $args = arg(); $num_args = count($args)-$start;
+		if(isset($_REQUEST["args_to_fetch"])) {
+			$num_args = $_REQUEST["args_to_fetch"];
+		}		
+		for($i = 0; $i < $num_args;$i++) {
+			$path .= ($path == "")?$args[$start+$i]:"/".$args[$start+$i];
+		}
+		$path = drupal_get_normal_path($path);		
+	}
+	return $path;
+}
+
+/**
+ * Loads the bridge record by rec_id (primary key of fbapp_bridge table).
+ */
+function fbapp_bridge_app_load($rec_id) {
+	//var_dump($rec_id);
+	$app_rec = array();
+	if(gettype($rec_id) == "array") {
+		$app_rec = db_select(FBAPP_BRIDGE_TBL, 'c')->fields('c')->condition('rec_id', $rec_id["rec_id"], '=')->execute()->fetchAssoc();
+	} else {
+		$app_rec = db_select(FBAPP_BRIDGE_TBL, 'c')->fields('c')->condition('rec_id', $rec_id, '=')->execute()->fetchAssoc();	
+	}
+	return $app_rec;
+}
+
+/**
+ * Loads the record by facebook app_id.
+ * @return array $app_rec
+ */
+function _fbapp_bridge_app_load_by_app_id($app_id) {
+	$app_rec = db_select(FBAPP_BRIDGE_TBL, 'c')->fields('c')->condition('app_id', $app_id, '=')->execute()->fetchAssoc();
+	return $app_rec;
+}
+
+/**
+ * Loads the block from the app_id.
+ * @return array $block_rec
+ */
+function fbapp_bridge_block_load($rec_id) {
+	$block_rec = db_select(FBAPP_BRIDGE_BLOCKS_TBL, 'c')->fields('c')->condition('rec_id', $rec_id, '=')->execute()->fetchAssoc();
+	return $block_rec;
+}
+
+/**
+ * Return the type of fbapp-bridge URL loaded. Could be either launch/canvas/tab.
+ * @return string $page_type 
+ */
+function _fbapp_bridge_get_page_type() {
+	$page = "";
+	if(is_fbapp_bridge_app_launch_page()) {
+		$page = arg(3);
+	}
+	return $page;
+}
+
+/**
+ * @return boolean $flag
+ * @see _fbapp_bridge_get_page_type()
+ */
+function fbapp_bridge_is_canvas_page() {
+	$flag = false;
+	if(_fbapp_bridge_get_page_type() == "canvas") {
+		$flag = true;
+	}
+	return $flag;
+}
+
+/**
+ * @return boolean $flag
+ * @see _fbapp_bridge_get_page_type()
+ */
+function fbapp_bridge_is_tab_page() {
+	$flag = false;
+	if(_fbapp_bridge_get_page_type() == "tab") {
+		$flag = true;
+	}
+	return $flag;
+}
+
+/**
+ * @return boolean $flag
+ * @see _fbapp_bridge_get_page_type()
+ */
+function fbapp_bridge_is_launch_page() {
+	$flag = false;
+	if(_fbapp_bridge_get_page_type() == "launch") {
+		$flag = true;
+	}
+	return $flag;
+}
+
+/**
+ * Returns the launched application URL. The launched URL could either be launch/canvas/tab. 
+ * @return string $url 
+ */
+function fbapp_bridge_get_launch_url() {
+	//arg(3) can be launch/canvas/tab
+	return "fbapp-bridge/app/".arg(2)."/".arg(3);
+}
+
+/**
+ * Determines whether or not the URL being rendered is a "launch/canvas/tab" page from fbapp-bridge.
+ * @return boolean $flag
+ */
+function fbapp_bridge_is_launch_landing_page() {
+    $flag = false;
+	if(arg(0) == "fbapp-bridge" && (arg(3) == "launch" || arg(3) == "canvas" || arg(3) == "tab")) {
+		$flag = true;
+	}
+	return $flag;
+}
